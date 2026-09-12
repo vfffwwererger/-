@@ -309,7 +309,7 @@ export const QuotationModule: React.FC<QuotationModuleProps> = ({
     }
 
     if (!formData.address?.trim()) {
-      newMainErrors.address = '請輸入住址 / 公司地址 (必填)';
+      newMainErrors.address = '請輸入公司地址 (必填)';
     }
 
     if (!formData.items || formData.items.length === 0) {
@@ -857,7 +857,7 @@ export const QuotationModule: React.FC<QuotationModuleProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    住址 / 公司地址 <span className="text-rose-500">* (選取客戶自動帶入)</span>
+                    公司地址 <span className="text-rose-500">* (選取客戶自動帶入)</span>
                   </label>
                   <input
                     id="quote-input-address"

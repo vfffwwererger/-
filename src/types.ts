@@ -62,7 +62,7 @@ export interface Quotation {
   customerContact?: string;
   quoter: string; // 報價人員 *
   phone: string; // 連絡電話 *
-  address: string; // 住址 / 公司地址 *
+  address: string; // 公司地址 *
   terms?: string; // 備註 / 交付條件
   status: QuotationStatus;
   items: QuotationItem[];
