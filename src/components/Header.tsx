@@ -102,19 +102,19 @@ export const Header: React.FC<HeaderProps> = ({
                 id="neon-db-status-btn"
                 onClick={onOpenDbModal}
                 title="Neon 雲端資料庫狀態"
-                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors min-h-[44px] ${
+                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-colors min-h-[44px] ${
                   dbStatus?.isConnected
-                    ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                    ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                    : 'border-amber-300 dark:border-amber-700 bg-amber-50/80 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 hover:bg-amber-100'
                 }`}
               >
-                <Database className={`w-3.5 h-3.5 ${dbStatus?.isConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}`} />
-                <span className="hidden sm:inline">
+                <Database className={`w-4 h-4 ${dbStatus?.isConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                <span>
                   {dbStatus?.isConnected ? 'Neon 已連線' : 'Neon 資料庫'}
                 </span>
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    dbStatus?.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+                    dbStatus?.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
                   }`}
                 />
               </button>
@@ -172,6 +172,29 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               );
             })}
+
+            {onOpenDbModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenDbModal();
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`flex items-center justify-between w-full px-4 py-3 mt-2 rounded-xl text-sm font-semibold border min-h-[44px] transition-colors ${
+                  dbStatus?.isConnected
+                    ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                    : 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Database className="w-5 h-5" />
+                  <span>Neon 雲端資料庫狀態</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-white dark:bg-slate-900 border font-mono">
+                  {dbStatus?.isConnected ? '已連線' : '未連線'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       )}
