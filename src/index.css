@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide headers, toasts, buttons and other UI chrome during printing */
+  header,
+  nav,
+  #toast-container,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Make the printable sheet take full page with crisp borders */
+  #a4-quotation-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

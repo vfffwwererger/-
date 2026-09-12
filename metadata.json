@@ -1,0 +1,6 @@
+{
+  "name": "企業報價單管理系統",
+  "description": "純前端響應式報價單管理系統，涵蓋客戶管理、廠商管理、產品管理與動態報價單開立及A4列印檢視。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
