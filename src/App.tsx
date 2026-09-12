@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { CustomerModule } from './components/CustomerModule';
 import { VendorModule } from './components/VendorModule';
@@ -7,6 +7,7 @@ import { QuotationModule } from './components/QuotationModule';
 import { ToastContainer } from './components/Toast';
 import { ConfirmModal } from './components/ConfirmModal';
 import { StatsOverview } from './components/StatsOverview';
+import { DatabaseStatusModal } from './components/DatabaseStatusModal';
 import { Customer, Vendor, Product, Quotation, TabType, ToastMessage } from './types';
 import {
   loadCustomers,
@@ -19,6 +20,14 @@ import {
   saveQuotations,
   resetAllDataToDefault,
 } from './utils/helpers';
+import {
+  checkNeonHealth,
+  fetchAllFromNeon,
+  syncAllToNeon,
+  syncEntityToNeon,
+  syncDeleteToNeon,
+  CloudSyncStatus,
+} from './services/neonService';
 import { CheckCircle2, ShieldCheck, Database, LayoutGrid } from 'lucide-react';
 
 export default function App() {
@@ -30,6 +39,17 @@ export default function App() {
   const [vendors, setVendors] = useState<Vendor[]>(() => loadVendors());
   const [products, setProducts] = useState<Product[]>(() => loadProducts());
   const [quotations, setQuotations] = useState<Quotation[]>(() => loadQuotations());
+
+  // Cloud Database Sync State
+  const [dbStatus, setDbStatus] = useState<CloudSyncStatus>({
+    isConfigured: false,
+    isConnected: false,
+    isSyncing: false,
+    lastSyncedAt: null,
+    errorMessage: null,
+  });
+  const [databaseName, setDatabaseName] = useState<string | undefined>(undefined);
+  const [isDbModalOpen, setIsDbModalOpen] = useState<boolean>(false);
 
   // Toast Notification State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -50,7 +70,7 @@ export default function App() {
     onConfirm: () => {},
   });
 
-  // Sync to LocalStorage
+  // Sync to LocalStorage (Always acts as offline backup)
   useEffect(() => {
     saveCustomers(customers);
   }, [customers]);
@@ -68,7 +88,7 @@ export default function App() {
   }, [quotations]);
 
   // Toast helper
-  const showToast = (type: 'success' | 'error' | 'info', message: string, title?: string) => {
+  const showToast = useCallback((type: 'success' | 'error' | 'info', message: string, title?: string) => {
     const id = Date.now().toString() + Math.random().toString(36).slice(2);
     const newToast: ToastMessage = { id, type, message, title };
     setToasts((prev) => [...prev, newToast]);
@@ -77,10 +97,110 @@ export default function App() {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3500);
-  };
+  }, []);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Check Neon Database Health & auto-pull on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function initCloudSync() {
+      const health = await checkNeonHealth();
+      if (!isMounted) return;
+
+      if (health.connected) {
+        setDbStatus({
+          isConfigured: true,
+          isConnected: true,
+          isSyncing: false,
+          lastSyncedAt: new Date().toLocaleTimeString(),
+          errorMessage: null,
+        });
+        setDatabaseName(health.database);
+
+        // Fetch latest data from Neon PostgreSQL
+        const remoteData = await fetchAllFromNeon();
+        if (remoteData && isMounted) {
+          // If remote has data, sync into local state
+          const hasRemoteData =
+            remoteData.customers.length > 0 ||
+            remoteData.vendors.length > 0 ||
+            remoteData.products.length > 0 ||
+            remoteData.quotations.length > 0;
+
+          if (hasRemoteData) {
+            setCustomers(remoteData.customers);
+            setVendors(remoteData.vendors);
+            setProducts(remoteData.products);
+            setQuotations(remoteData.quotations);
+            showToast('success', '已成功連線至 Neon 雲端資料庫並載入最新資料！', '雲端同步');
+          } else {
+            // First time connection: push current local state to Neon to seed it!
+            await syncAllToNeon({
+              customers,
+              vendors,
+              products,
+              quotations,
+            });
+            showToast('info', '已將現有本機資料庫自動初始化並備份至 Neon 雲端！', 'Neon 雲端初始化');
+          }
+        }
+      } else {
+        setDbStatus({
+          isConfigured: false,
+          isConnected: false,
+          isSyncing: false,
+          lastSyncedAt: null,
+          errorMessage: health.error || '未偵測到 DATABASE_URL 或無法連線',
+        });
+      }
+    }
+
+    initCloudSync();
+    return () => {
+      isMounted = false;
+    };
+  }, [showToast]);
+
+  // Manual Push to Neon
+  const handleManualPushToNeon = async () => {
+    const success = await syncAllToNeon({
+      customers,
+      vendors,
+      products,
+      quotations,
+    });
+    if (success) {
+      setDbStatus((prev) => ({
+        ...prev,
+        isConnected: true,
+        lastSyncedAt: new Date().toLocaleTimeString(),
+      }));
+      showToast('success', '已將所有資料成功推送到 Neon PostgreSQL 雲端資料庫！', '推送成功');
+    } else {
+      showToast('error', '推送至 Neon 失敗，請檢查 Vercel DATABASE_URL 設定。', '同步失敗');
+    }
+  };
+
+  // Manual Pull from Neon
+  const handleManualPullFromNeon = async () => {
+    const remoteData = await fetchAllFromNeon();
+    if (remoteData) {
+      setCustomers(remoteData.customers);
+      setVendors(remoteData.vendors);
+      setProducts(remoteData.products);
+      setQuotations(remoteData.quotations);
+      setDbStatus((prev) => ({
+        ...prev,
+        isConnected: true,
+        lastSyncedAt: new Date().toLocaleTimeString(),
+      }));
+      showToast('success', '已從 Neon 資料庫拉取最新資料！', '拉取成功');
+    } else {
+      showToast('error', '從 Neon 下載資料失敗，請確認資料庫狀態。', '拉取失敗');
+    }
   };
 
   // Customer Actions
@@ -94,6 +214,10 @@ export default function App() {
       }
       return [customer, ...prev];
     });
+    // Async push to Neon
+    if (dbStatus.isConnected) {
+      syncEntityToNeon('save_customer', customer);
+    }
   };
 
   const handleDeleteCustomer = (id: string, name: string) => {
@@ -106,6 +230,9 @@ export default function App() {
       isDestructive: true,
       onConfirm: () => {
         setCustomers((prev) => prev.filter((c) => c.id !== id));
+        if (dbStatus.isConnected) {
+          syncDeleteToNeon('customer', id);
+        }
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         showToast('info', `已刪除客戶：${name}`, '刪除成功');
       },
@@ -123,6 +250,9 @@ export default function App() {
       }
       return [vendor, ...prev];
     });
+    if (dbStatus.isConnected) {
+      syncEntityToNeon('save_vendor', vendor);
+    }
   };
 
   const handleDeleteVendor = (id: string, name: string) => {
@@ -135,6 +265,9 @@ export default function App() {
       isDestructive: true,
       onConfirm: () => {
         setVendors((prev) => prev.filter((v) => v.id !== id));
+        if (dbStatus.isConnected) {
+          syncDeleteToNeon('vendor', id);
+        }
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         showToast('info', `已刪除廠商：${name}`, '刪除成功');
       },
@@ -152,6 +285,9 @@ export default function App() {
       }
       return [product, ...prev];
     });
+    if (dbStatus.isConnected) {
+      syncEntityToNeon('save_product', product);
+    }
   };
 
   const handleDeleteProduct = (id: string, name: string) => {
@@ -164,6 +300,9 @@ export default function App() {
       isDestructive: true,
       onConfirm: () => {
         setProducts((prev) => prev.filter((p) => p.id !== id));
+        if (dbStatus.isConnected) {
+          syncDeleteToNeon('product', id);
+        }
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         showToast('info', `已刪除產品：${name}`, '刪除成功');
       },
@@ -181,6 +320,9 @@ export default function App() {
       }
       return [quotation, ...prev];
     });
+    if (dbStatus.isConnected) {
+      syncEntityToNeon('save_quotation', quotation);
+    }
   };
 
   const handleDeleteQuotation = (id: string, name: string) => {
@@ -193,6 +335,9 @@ export default function App() {
       isDestructive: true,
       onConfirm: () => {
         setQuotations((prev) => prev.filter((q) => q.id !== id));
+        if (dbStatus.isConnected) {
+          syncDeleteToNeon('quotation', id);
+        }
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         showToast('info', `已刪除報價單：${name}`, '刪除成功');
       },
@@ -204,15 +349,18 @@ export default function App() {
     setConfirmModal({
       isOpen: true,
       title: '重設所有範例資料',
-      message: '這將會清除您目前在瀏覽器 LocalStorage 中的所有自訂修改，並恢復為初始標準範例資料。確定要重設嗎？',
+      message: '這將會恢復為初始標準範例資料。若已連線至 Neon，亦可選擇同步更新雲端資料庫。確定要重設嗎？',
       confirmLabel: '確認重設',
       isDestructive: false,
-      onConfirm: () => {
+      onConfirm: async () => {
         const resetData = resetAllDataToDefault();
         setCustomers(resetData.customers);
         setVendors(resetData.vendors);
         setProducts(resetData.products);
         setQuotations(resetData.quotations);
+        if (dbStatus.isConnected) {
+          await syncAllToNeon(resetData);
+        }
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         showToast('success', '已成功重設為初始台灣企業展示範例資料！', '重設完成');
       },
@@ -221,11 +369,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
-      {/* Header with Navigation */}
+      {/* Header with Navigation & DB Status */}
       <Header
         currentTab={currentTab}
         onTabChange={setCurrentTab}
         onResetData={handleResetData}
+        dbStatus={dbStatus}
+        onOpenDbModal={() => setIsDbModalOpen(true)}
       />
 
       {/* Main Workspace View */}
@@ -307,6 +457,16 @@ export default function App() {
         isDestructive={confirmModal.isDestructive}
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Neon Database Status & Control Modal */}
+      <DatabaseStatusModal
+        isOpen={isDbModalOpen}
+        onClose={() => setIsDbModalOpen(false)}
+        status={dbStatus}
+        databaseName={databaseName}
+        onManualSyncToNeon={handleManualPushToNeon}
+        onPullFromNeon={handleManualPullFromNeon}
       />
     </div>
   );
